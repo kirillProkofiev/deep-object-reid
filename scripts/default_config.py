@@ -28,6 +28,9 @@ def get_default_config():
     cfg.model.fpn.enable = True
     cfg.model.fpn.dim = 256
     cfg.model.fpn.process = 'concatenation'
+    cfg.model.rsc = CN()
+    cfg.model.rsc.enable = False
+    cfg.model.rsc.drop_percentage = 0.33
 
     # data
     cfg.data = CN()
@@ -388,6 +391,7 @@ def model_kwargs(cfg, num_classes):
         'enable_attentions': cfg.model.enable_attentions and cfg.data.enable_masks,
         'attr_names': cfg.attr_loss.names,
         'attr_num_classes': cfg.attr_loss.num_classes,
+        'rsc_cfg': cfg.model.rsc,
     }
 
 

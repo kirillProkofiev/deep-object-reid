@@ -39,9 +39,10 @@ class ImageAMSoftmaxEngine(Engine):
                  scheduler=None, use_gpu=False, softmax_type='stock', label_smooth=False,
                  conf_penalty=False, pr_product=False, m=0.35, s=10, end_s=None,
                  duration_s=None, skip_steps_s=None, enable_masks=False,
-                 adaptive_margins=False, attr_cfg=None, base_num_classes=-1):
+                 adaptive_margins=False, attr_cfg=None, base_num_classes=-1, rsc_cfg=None):
         super(ImageAMSoftmaxEngine, self).__init__(datamanager, use_gpu)
 
+        self.rsc_cfg = rsc_cfg
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -152,7 +153,7 @@ class ImageAMSoftmaxEngine(Engine):
         obj_ids = train_records['obj_id']
         imgs, obj_ids = self._apply_batch_transform(imgs, obj_ids)
 
-        run_kwargs = self._prepare_run_kwargs()
+        run_kwargs = self._prepare_run_kwargs(obj_ids)
         model_output = self.model(imgs, **run_kwargs)
         all_logits, all_embeddings, extra_data = self._parse_model_output(model_output)
 
@@ -259,12 +260,14 @@ class ImageAMSoftmaxEngine(Engine):
 
         return loss_summary, avg_acc
 
-    def _prepare_run_kwargs(self):
+    def _prepare_run_kwargs(self, trgt_ids=None):
         run_kwargs = dict()
         if self.enable_metric_losses:
             run_kwargs['get_embeddings'] = True
         if self.enable_attr or self.enable_masks:
             run_kwargs['get_extra_data'] = True
+        if trgt_ids is not None and self.rsc_cfg:
+            run_kwargs['trg_labels'] = trgt_ids
 
         return run_kwargs
 

@@ -27,6 +27,8 @@ from collections import OrderedDict
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.autograd import grad
+import numpy as np
 
 from torchreid.models.osnet import OSNet, ConvLayer, LightConv3x3, Conv1x1Linear, \
                                    ChannelGate, Conv1x1, pretrained_urls
@@ -43,6 +45,30 @@ pretrained_urls_fpn = {
     'fpn_osnet_x0_25': pretrained_urls['osnet_x0_25'],
     'fpn_osnet_ibn_x1_0': pretrained_urls['osnet_ibn_x1_0']
 }
+
+
+def rsc(features, scores, labels, retain_p=0.77):
+    """Representation Self-Challenging module (RSC).
+       Based on the paper: https://arxiv.org/abs/2007.02454
+    """
+    batch_range = torch.arange(scores.size(0), device=scores.device)
+    gt_scores = scores[batch_range, labels.view(-1)]
+    z_grads = grad(outputs=gt_scores,
+                   inputs=features,
+                   grad_outputs=torch.ones_like(gt_scores),
+                   create_graph=True)[0]
+    with torch.no_grad():
+        z_grads_cpu = z_grads.cpu().numpy()
+        z_grad_thresholds_cpu = np.quantile(z_grads_cpu, retain_p, axis=(1, 2, 3), keepdims=True)
+        zero_mask = z_grads > torch.from_numpy(z_grad_thresholds_cpu).to(z_grads.device)
+        unchanged_mask = torch.randint(2, [z_grads.size(0)], dtype=torch.bool, device=z_grads.device)
+        unchanged_mask = unchanged_mask.view(-1, 1, 1, 1, 1)
+
+    scale = 1.0 / float(retain_p)
+    filtered_features = scale * torch.where(zero_mask, torch.zeros_like(features), features)
+    out_features = torch.where(unchanged_mask, features, filtered_features)
+
+    return out_features
 
 
 class LCTGate(nn.Module):
@@ -139,8 +165,10 @@ class OSNetFPN(OSNet):
                  IN_first=False,
                  extra_blocks=False,
                  lct_gate=False,
+                 rsc_cfg=None,
                  **kwargs):
         self.dropout_cfg = dropout_cfg
+        self.rsc_cfg = rsc_cfg
         self.extra_blocks = extra_blocks
         self.channel_gate = LCTGate if lct_gate else ChannelGate
         if self.extra_blocks:
@@ -274,16 +302,8 @@ class OSNetFPN(OSNet):
             output = feature_pyramid[-1]
         return output
 
-    def forward(self, x, return_featuremaps=False, get_embeddings=False):
-        x, feature_pyramid = self.featuremaps(x)
-        if self.fpn is not None:
-            feature_pyramid = self.fpn(feature_pyramid)
-            x = self.process_feature_pyramid(feature_pyramid)
-
-        if return_featuremaps:
-            return x
-
-        v = self.global_avgpool(x)
+    def head_forward(self, features, get_embeddings=False):
+        v = self.global_avgpool(features)
         if isinstance(self.fc[0], nn.Linear):
             v = v.view(v.size(0), -1)
 
@@ -310,6 +330,22 @@ class OSNetFPN(OSNet):
             return y, v
         else:
             raise KeyError("Unsupported loss: {}".format(self.loss))
+
+    def forward(self, x, trg_labels=None, return_featuremaps=False, get_embeddings=False):
+        x, feature_pyramid = self.featuremaps(x)
+        if self.fpn is not None:
+            feature_pyramid = self.fpn(feature_pyramid)
+            x = self.process_feature_pyramid(feature_pyramid)
+
+        if return_featuremaps:
+            return x
+
+        if self.train and trg_labels is not None and self.rsc_cfg.enable:
+            y, _ = self.head_forward(x, get_embeddings=True)
+            rsc(x, y, trg_labels, 1. - self.rsc_cfg.drop_percentage)
+
+        return self.head_forward(x, get_embeddings)
+
 
     def load_pretrained_weights(self, pretrained_dict):
         model_dict = self.state_dict()

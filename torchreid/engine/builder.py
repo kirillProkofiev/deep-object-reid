@@ -30,6 +30,7 @@ def build_engine(cfg, datamanager, model, optimizer, scheduler):
                 adaptive_margins=cfg.loss.softmax.adaptive_margins,
                 attr_cfg=cfg.attr_loss,
                 base_num_classes=cfg.loss.softmax.base_num_classes,
+                rsc_cfg=cfg.model.rsc,
             )
         else:
             engine = ImageTripletEngine(
