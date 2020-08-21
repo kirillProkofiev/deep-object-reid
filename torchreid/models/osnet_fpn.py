@@ -47,10 +47,13 @@ pretrained_urls_fpn = {
 }
 
 
-def rsc(features, scores, labels, retain_p=0.77):
+__RSC_MODES__ = ['overall', 'channelwise', 'spatial']
+
+def rsc(features, scores, labels, retain_p=0.77, mode='overall'):
     """Representation Self-Challenging module (RSC).
        Based on the paper: https://arxiv.org/abs/2007.02454
     """
+    assert mode in __RSC_MODES__
     batch_range = torch.arange(scores.size(0), device=scores.device)
     gt_scores = scores[batch_range, labels.view(-1)]
     z_grads = grad(outputs=gt_scores,
@@ -59,10 +62,16 @@ def rsc(features, scores, labels, retain_p=0.77):
                    create_graph=True)[0]
     with torch.no_grad():
         z_grads_cpu = z_grads.cpu().numpy()
-        z_grad_thresholds_cpu = np.quantile(z_grads_cpu, retain_p, axis=(1, 2, 3), keepdims=True)
+        if mode == __RSC_MODES__[0]:
+            axes = (1, 2, 3)
+        elif mode == __RSC_MODES__[1]:
+            axes = (2, 3)
+        elif mode == __RSC_MODES__[2]:
+            axes = (1,)
+        z_grad_thresholds_cpu = np.quantile(z_grads_cpu, retain_p, axis=axes, keepdims=True)
         zero_mask = z_grads > torch.from_numpy(z_grad_thresholds_cpu).to(z_grads.device)
         unchanged_mask = torch.randint(2, [z_grads.size(0)], dtype=torch.bool, device=z_grads.device)
-        unchanged_mask = unchanged_mask.view(-1, 1, 1, 1, 1)
+        unchanged_mask = unchanged_mask.view(-1, 1, 1, 1)
 
     scale = 1.0 / float(retain_p)
     filtered_features = scale * torch.where(zero_mask, torch.zeros_like(features), features)
@@ -342,7 +351,7 @@ class OSNetFPN(OSNet):
 
         if self.train and trg_labels is not None and self.rsc_cfg.enable:
             y, _ = self.head_forward(x, get_embeddings=True)
-            rsc(x, y, trg_labels, 1. - self.rsc_cfg.drop_percentage)
+            x = rsc(x, y, trg_labels, 1. - self.rsc_cfg.drop_percentage, self.rsc_cfg.mode)
 
         return self.head_forward(x, get_embeddings)
 

@@ -31,6 +31,7 @@ def get_default_config():
     cfg.model.rsc = CN()
     cfg.model.rsc.enable = False
     cfg.model.rsc.drop_percentage = 0.33
+    cfg.model.rsc.mode = 'overall'
 
     # data
     cfg.data = CN()
