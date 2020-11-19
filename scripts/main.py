@@ -112,7 +112,7 @@ def main():
             load_pretrained_weights(model, cfg.model.load_weights)
 
     if cfg.use_gpu:
-        num_devices = 1
+        num_devices = torch.cuda.device_count()
         if enable_mutual_learning and args.split_models:
             num_models = len(args.extra_config_files) + 1
             assert num_devices >= num_models
