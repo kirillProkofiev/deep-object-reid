@@ -3,7 +3,7 @@ model:
   feature_dim: 256
 
 data:
-  root: '/home/prokofiev/deep-object-reid/datasets_for_face'
+  root: './'
   type: 'image'
   sources: ['vgg_face2']
   targets: ['lfw']
