@@ -13,3 +13,6 @@ gdown
 flake8
 yapf
 isort
+sklearn
+lxml
+terminaltables

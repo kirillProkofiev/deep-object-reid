@@ -4,6 +4,7 @@ from tqdm import tqdm
 import cv2 as cv
 import numpy as np
 import os
+import re
 
 import argparse
 
@@ -54,6 +55,7 @@ class VGGFace2_raw(Dataset):
             if self.have_landmarks:
                 detections_file_lines = self.detections_file.readlines()[1:]
                 landmarks_file_lines = self.landmarks_file.readlines()[1:]
+
                 assert len(detections_file_lines) == len(landmarks_file_lines)
                 assert len(images_file_lines) == len(detections_file_lines)
 
